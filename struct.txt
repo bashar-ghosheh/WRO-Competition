@@ -1,0 +1,16 @@
+~/wro2026/
+├── venv/                     # virtual env (system-site-packages)
+├── main.py                   # entry point, starts all threads
+├── lidar/
+│   └── lidar_reader.py       # D500 serial parsing thread
+├── vision/
+│   └── camera_vision.py      # picamera2 + OpenCV color detection thread
+├── control/
+│   ├── state_machine.py      # decision logic, phases
+│   └── serial_link.py        # UART/USB to ESP32, sends S<angle>,<speed>
+├── firmware/
+│   └── esp32_firmware.ino    # ESP32-S3 Arduino sketch for DRV8833 & Servo
+├── logs/                     # run logs for debugging/testing evidence
+├── calibration/
+│   └── hsv_tune.py           # standalone script to tune red/green thresholds
+└── requirements.txt          # pyserial, numpy — NOT opencv/picamera2 (those are apt)
