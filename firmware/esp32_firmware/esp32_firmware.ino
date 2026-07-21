@@ -30,7 +30,7 @@
 Servo steeringServo;
 unsigned long lastPacketTime = 0;
 
-int currentAngle = 86; // Default straight
+int currentAngle = 90; // Default straight
 int currentSpeed = 0;  // Default stopped
 
 void setup() {

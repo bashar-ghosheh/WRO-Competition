@@ -16,8 +16,8 @@ import logging
 
 class StateMachine:
     # Steering constants (calibrated to the physical servo mapping)
-    STEER_CENTER = 86
-    STEER_MAX_LEFT = 50
+    STEER_CENTER = 90
+    STEER_MAX_LEFT = 60
     STEER_MAX_RIGHT = 120
 
     # Driving speed targets

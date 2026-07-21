@@ -68,7 +68,7 @@ class SerialLink:
         self._connected = False
 
         self._lock = threading.Lock()
-        self._target_angle = 86   # neutral/straight, matches your servo calibration
+        self._target_angle = 90   # neutral/straight, matches your servo calibration
         self._target_speed = 0    # stopped by default until state machine says otherwise
 
         self._log_path = log_path
@@ -88,7 +88,7 @@ class SerialLink:
             self._thread.join(timeout=1.0)
         if self._ser:
             try:
-                self._ser.write(b"S86,0\n")  # final stop command before closing
+                self._ser.write(b"S90,0\n")  # final stop command before closing
             except serial.SerialException:
                 pass
             self._ser.close()
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     link = SerialLink(baud=115200, send_hz=30, auto_detect=True)
     link.start()
     try:
-        angle = 86
+        angle = 90
         direction = 1
         while True:
             angle += direction * 2
