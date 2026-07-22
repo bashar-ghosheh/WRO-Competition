@@ -6,69 +6,67 @@ This document details the electrical power distribution, voltage domains, sensor
 
 ## ⚡ Power Domains & Voltage Regulation
 
-The robot operates on three distinct voltage domains to support logic processing, high-torque servo steering, and motor drive:
+Our autonomous vehicle runs a high-draw electrical system. The drive motor under load can pull up to 2.5A at stall, and the Raspberry Pi 4B consumes up to 1.2A. To support these demands stably and prevent voltage sags from affecting processing logic, the power distribution is split across dedicated regulators:
 
 ```
                   ┌───► [12V-to-6V Buck Converter] ───► MG996R Servo (6V)
                   │
-[12V Battery] ────┼───► [12V-to-5V Buck Converter] ───► ESP32-S3 Logic (5V)
-                  │
-                  └───► [DRV8833 Motor Driver] ──────► 12V DC Motor (Voltage Regulated)
-                  
-[USB Power Bank] ────────────────────────────────────► Raspberry Pi 4B (5V / 3A)
+[12V Battery] ────┼───► [12V-to-5V Buck Converter] ───► Raspberry Pi 4B & ESP32-S3 (5V)
+(2P3S Samsung)    │
+                  └───► [A4950 Motor Driver] ─────────► 37mm DC Motor (12V)
 ```
 
-### 1. Raspberry Pi 4B (5V / 3A)
-- **Power Source**: Dedicated external 5V/3A USB-C Power Bank.
-- **Reasoning**: The Raspberry Pi 4B is highly sensitive to voltage drops. If the Pi shared a battery with the heavy DC drive motor, the sudden current draw when the motor starts would drop the battery voltage (brownout), causing the Pi to crash or reboot. A completely isolated power bank guarantees stable perception and control processing.
+### 1. The 12V 2P3S Battery Pack
+- **Configuration**: Built using high-density **Samsung lithium-ion cells** wired in a **2P3S** (2 Parallel, 3 Series) configuration. This delivers a nominal **12V** with a high capacity of **6Ah**.
+- **Reasoning**: A 2P3S pack provides a substantial energy pool, giving us plenty of headroom to absorb sudden voltage spikes from our actuators and protecting logic boards (Pi & ESP32) from severe voltage drops.
 
 ### 2. MG996R Servo Motor (6V Rail)
 - **Power Source**: 12V Battery stepped down to **6V** using a dedicated high-current DC-to-DC buck converter.
-- **Reasoning**: The MG996R steering servo operates between 4.8V and 7.2V. At 4.8V, it lacks the torque to turn the front wheels quickly at speed. At 6.0V, it provides **10 kg-cm of torque** and a transit time of 0.15s per 60 degrees. A dedicated 6V converter protects the servo from the 12V battery voltage while maximizing its steering response.
+- **Reasoning**: The MG996R steering servo operates best at 6V to deliver maximum torque and response time. A dedicated 6V converter protects the servo from the raw 12V battery line while ensuring consistent steering performance.
 
-### 3. ESP32-S3 Dev Board (5V Rail)
+### 3. Logic Power (5V Rail)
 - **Power Source**: 12V Battery stepped down to **5V** using a 12V-to-5V DC-to-DC buck converter.
-- **Reasoning**: Provides a clean, regulated 5V source to the ESP32's VIN pin.
+- **Reasoning**: This clean 5V line supplies power to the Raspberry Pi 4B and the ESP32-S3 Dev Board, ensuring logic processing remains isolated from motor switching noise.
 
 ---
 
-## ⚠️ The DRV8833 10.8V Maximum Voltage Concern
+## ❄️ Battery Management System (BMS) Thermal Management
 
-### The Problem:
-Our drive system uses a 12V DC motor, and we are using a **DRV8833 Dual H-Bridge driver**. 
-- According to the Texas Instruments datasheet, the **maximum operating voltage of the DRV8833 is 10.8V**.
-- A fully charged 3S LiPo battery (11.1V nominal) reaches **12.6V**, which exceeds the absolute maximum ratings of the DRV8833 and will permanently burn out the driver's internal MOSFETs.
-
-### The Resolution:
-To resolve this voltage mismatch and protect the DRV8833, we implemented the following design constraint:
-* **Option A (Voltage Regulation)**: The motor power rail input of the DRV8833 is regulated down to a safe **9V** using a heavy-duty buck regulator. This limits the peak voltage to the driver and ensures it never runs hot.
-* **Option B (Battery Selection)**: Alternatively, we can run the drive train on a **2S LiPo battery (7.4V nominal, 8.4V max)** or an **8.4V NiMH battery pack**. This fits completely within the DRV8833's safe operating envelope, though it slightly reduces the top speed of the 12V DC motor.
+* **The Problem**: During testing, we discovered that the BMS located inside the battery pack was heating up significantly and began melting through its housing, even with light usage.
+* **The Constraint**: Since our Kodama Trinus printer only prints in PLA, we could not manufacture a heat-resistant enclosure (PLA begins softening and deforming at 60°C).
+* **The Solution**: We moved the BMS to a separate location and designed a custom **5W blower fan cooling rig** to actively blow air across the BMS heatsink, keeping it cool and preventing thermal deformation.
 
 ---
 
-## 🛰️ Sensor Suite Selection & Placement Reasoning
+## 🔌 Actuator & Sensor Interfaces
+
+### 1. Pin Connections & Protocols
+| Source Device | Target Device | Protocol | Details |
+| :--- | :--- | :--- | :--- |
+| **Raspberry Pi 4B** | **ESP32-S3** | UART (USB Serial) | High-level coordinate stream (115200 baud) |
+| **Raspberry Pi 4B** | **D500 Lidar** | UART | Raw polar distance sweeps |
+| **Raspberry Pi 4B** | **Pi Camera Rev 1.3** | CSI Ribbon | High-speed video stream |
+| **ESP32-S3** | **A4950 Motor Driver**| PWM + Direction | Controls the 37mm DC Motor speed and rotation |
+| **ESP32-S3** | **MG996R Servo** | PWM | Steers the wheels (GPIO 18) |
+
+### 2. A4950 Motor Driver Choice
+- **Reasoning**: We chose the **A4950 motor driver** to run the 37mm gearmotor. It supports the higher current requirements of our motor under load (up to 2.5A stall) and is compatible with the ESP32's PWM speed control.
+
+---
+
+## 🛰️ Sensor Placement & Rationale
 
 To satisfy WRO rules and safely navigate the track, our sensor suite consists of a Lidar and a Camera. **We did not use any Time-of-Flight (ToF) sensors.**
 
-```
-       [Pi Camera Rev 1.3] (Rear-facing, angled down)
-              │
-              ▼ (Captures 60px slice of floor for color)
-              
-       [D500 LiDAR] (Top-mounted, flat)
-              │
-              ▼ (360° distance mapping of walls)
-```
-
 ### 1. D500 LiDAR (perception of walls and obstacles)
-- **Placement**: Mounted flat on the highest tier of the chassis, centered relative to the axles.
-- **Reasoning**: A 360-degree rangefinder. By placing it on top, it has an unobstructed view of the surrounding walls and pillars, allowing the code to calculate wall distances at 90° (left) and 270° (right) for auto-centering.
+- **Placement**: Mounted flat on the front of the vehicle, directly behind the steering servo.
+- **Reasoning**: Placed at the front to guarantee that its forward-facing 180° sweep is completely unobstructed, allowing the vehicle to detect walls and obstacles ahead.
 
 ### 2. Raspberry Pi Camera Rev 1.3 (perception of color signs)
-- **Placement**: Mounted backwards (rear-facing) and upside-down on the chassis, angled downwards at a fixed pitch.
-- **Reasoning**: Used strictly to detect the color of upcoming pillars. By mounting it pointing backwards, we can read colors after passing them, or focus on objects behind us. Flipped 180° in software (`FLIP_MODE = -1`) to correct the physical upside-down mounting.
+- **Placement**: Mounted on an elevated platform directly above the Lidar, angled slightly downwards.
+- **Reasoning**: This vertical stacking layout keeps the camera's view of color pillars clear. Angling the camera down slightly minimizes image jitter during vehicle acceleration.
 
 ### 3. Why we did NOT use Time-of-Flight (ToF) Sensors:
-- **Reduced Bus Congestion**: Multiple ToF sensors require sharing the I2C bus. On a Raspberry Pi, managing multiple I2C addresses (like VL53L1X sensors) requires complex XSHUT pin-addressing code and increases latency.
-- **Simplified Software Architecture**: The D500 Lidar already provides a complete 360° distance profile. Adding ToF sensors would create redundant data that would slow down the core state machine.
-- **Reduced Weight and Wiring**: Eliminating extra sensor breakout boards and wiring harnesses simplifies the chassis design and reduces electrical failure points.
+- **Color Sensitivity Issues**: During early prototyping, we found that ToF sensors struggled to detect distances to the **black walls** of the WRO arena. Lidar, using laser technology, easily overcomes material and color reflections to deliver accurate distance profiles.
+- **Stacked Layout Efficiency**: By stacking the Lidar and camera vertically at the front of the car, we saved physical space, allowed better airflow to the boards, and simplified the software.
+
