@@ -12,12 +12,54 @@ world comes from correlating the camera's horizontal offset with the
 lidar's front-angle cluster in the state machine, not from the camera
 alone.
 
+ROI (Region of Interest) cropping:
+    Since the camera is fixed and angled at a known mounting position,
+    the playing field always projects to roughly the same region of
+    each frame. We crop out everything else (ceiling/background above
+    the track, the car's own chassis/bumper if visible, and anything
+    off to the sides beyond the track boundaries) BEFORE thresholding.
+    This reduces false positives from objects outside the field of
+    play and speeds up processing (smaller array for cvtColor/inRange/
+    contour finding).
+
+    ROI_TOP/ROI_BOTTOM/ROI_LEFT/ROI_RIGHT must be tuned once for your
+    specific camera mounting angle/height. Use calibration/roi_tune.py
+    (or manually inspect a saved frame with a grid overlay) to find
+    values that keep the track floor in-frame while cutting everything
+    else out.
+
+Multiple candidates per color:
+    Rather than collapsing each color down to a single "biggest blob"
+    before the state machine ever sees it, this module reports up to
+    MAX_CANDIDATES_PER_COLOR contours per color. This matters when two
+    same-color pillars are both in frame at once (e.g. one right in
+    front of the robot, another farther down the track) - pixel area
+    alone can be fooled by viewing angle or partial cropping at the ROI
+    edge, so the state machine should correlate each candidate's
+    center_x against the lidar's angular sweep and act on whichever
+    candidate has the shortest LIDAR-CONFIRMED distance, not whichever
+    has the largest pixel area.
+
 Usage:
     vision = CameraVision()
     vision.start()
     ...
     result = vision.get_detection()
-    # result = {"color": "red"/"green"/None, "center_x": int, "area": int}
+    # result = {
+    #     "candidates": [
+    #         {"color": "red"/"green", "center_x": int, "area": int},
+    #         ...  up to MAX_CANDIDATES_PER_COLOR per color, sorted by
+    #              area (largest first) within each color
+    #     ]
+    # }
+    # center_x is reported in FULL-FRAME coordinates (ROI offset already
+    # added back in), so it stays consistent with the lidar correlation
+    # logic in the state machine.
+    #
+    # For convenience/back-compat, get_detection() also still exposes
+    # "color"/"center_x"/"area" for the single largest candidate overall
+    # (across both colors) - but new state-machine code should iterate
+    # "candidates" and use lidar distance to choose, not this field.
     ...
     vision.stop()
 """
@@ -32,6 +74,15 @@ from picamera2 import Picamera2
 FRAME_W = 640
 FRAME_H = 480
 
+# ROI (Region of Interest) crop bounds, in full-frame pixel coordinates.
+# TUNE THESE for your camera's mounting height/angle. Defaults below are
+# a starting guess assuming the camera is angled down slightly and the
+# track fills the lower-middle portion of the frame.
+ROI_TOP = 140       # rows above this are ignored (background/ceiling above track)
+ROI_BOTTOM = 460    # rows below this are ignored (car's own bumper/chassis, if visible)
+ROI_LEFT = 60       # columns left of this are ignored (outside track boundary)
+ROI_RIGHT = 580     # columns right of this are ignored (outside track boundary)
+
 # HSV thresholds - START HERE, then tune with calibration/hsv_tune.py
 # Red wraps around the HSV hue circle (0 and 180), so it needs two ranges.
 RED_RANGES = [
@@ -41,19 +92,28 @@ RED_RANGES = [
 GREEN_RANGE = ((40, 70, 70), (85, 255, 255))
 
 MIN_CONTOUR_AREA = 400  # pixels; filters out noise/tiny specks
+MAX_CANDIDATES_PER_COLOR = 3  # cap how many blobs per color we report
 
 
 class CameraVision:
-    def __init__(self, frame_w=FRAME_W, frame_h=FRAME_H):
+    def __init__(self, frame_w=FRAME_W, frame_h=FRAME_H,
+                 roi_top=ROI_TOP, roi_bottom=ROI_BOTTOM,
+                 roi_left=ROI_LEFT, roi_right=ROI_RIGHT):
         self.frame_w = frame_w
         self.frame_h = frame_h
+
+        # Clamp ROI to valid frame bounds so a bad tune value can't crash cv2.
+        self.roi_top = max(0, min(roi_top, frame_h - 1))
+        self.roi_bottom = max(self.roi_top + 1, min(roi_bottom, frame_h))
+        self.roi_left = max(0, min(roi_left, frame_w - 1))
+        self.roi_right = max(self.roi_left + 1, min(roi_right, frame_w))
 
         self._picam2 = None
         self._thread = None
         self._running = False
 
         self._lock = threading.Lock()
-        self._detection = {"color": None, "center_x": None, "area": 0}
+        self._detection = {"color": None, "center_x": None, "area": 0, "candidates": []}
         self._last_update = 0.0
 
     def start(self):
@@ -88,23 +148,56 @@ class CameraVision:
 
     def _run(self):
         while self._running:
-            frame = self._picam2.capture_array()  # RGB888
-            hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+            frame = self._picam2.capture_array()  # RGB888, full frame
+
+            # Crop to ROI first: cheaper processing + ignores anything
+            # outside the field of play (background, chassis, off-track).
+            roi = frame[self.roi_top:self.roi_bottom, self.roi_left:self.roi_right]
+
+            # NOTE: picamera2's "RGB888" format is actually delivered in
+            # BGR byte order in memory (a well-known libcamera/picamera2
+            # quirk - the name refers to the format string, not the actual
+            # channel order). Using COLOR_RGB2HSV here would swap the red
+            # and blue channels before hue conversion, causing red objects
+            # to be missed or misclassified (e.g. showing up as green).
+            # COLOR_BGR2HSV is the correct conversion for this data.
+            hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
             red_mask = self._mask_for_ranges(hsv, RED_RANGES)
             green_mask = self._mask_for_ranges(hsv, [GREEN_RANGE])
 
-            red_best = self._largest_contour(red_mask, "red")
-            green_best = self._largest_contour(green_mask, "green")
+            # Get up to MAX_CANDIDATES_PER_COLOR blobs per color instead of
+            # collapsing to one - lets the state machine correlate each
+            # against the lidar sweep and pick the truly nearest pillar,
+            # rather than trusting pixel area (which angle/cropping can fool).
+            red_candidates = self._find_candidates(red_mask, "red")
+            green_candidates = self._find_candidates(green_mask, "green")
+            all_candidates = red_candidates + green_candidates
 
-            # Pick whichever color has the larger (closer/more confident) blob
-            candidates = [c for c in (red_best, green_best) if c is not None]
             with self._lock:
-                if not candidates:
-                    self._detection = {"color": None, "center_x": None, "area": 0}
+                if not all_candidates:
+                    self._detection = {
+                        "color": None,
+                        "center_x": None,
+                        "area": 0,
+                        "candidates": [],
+                    }
                 else:
-                    color, cx, area = max(candidates, key=lambda c: c[2])
-                    self._detection = {"color": color, "center_x": cx, "area": area}
+                    # cx is relative to the ROI crop; add the left offset back
+                    # so downstream code (lidar correlation) sees full-frame
+                    # coordinates, same as before ROI cropping was added.
+                    candidates_full = [
+                        {"color": color, "center_x": cx + self.roi_left, "area": area}
+                        for (color, cx, area) in all_candidates
+                    ]
+                    # Back-compat single-best fields = largest blob overall.
+                    best = max(candidates_full, key=lambda c: c["area"])
+                    self._detection = {
+                        "color": best["color"],
+                        "center_x": best["center_x"],
+                        "area": best["area"],
+                        "candidates": candidates_full,
+                    }
                 self._last_update = time.time()
 
     @staticmethod
@@ -119,17 +212,27 @@ class CameraVision:
         return mask
 
     @staticmethod
-    def _largest_contour(mask, color_label):
+    def _find_candidates(mask, color_label):
+        """Return up to MAX_CANDIDATES_PER_COLOR contours for this color,
+        as (color_label, center_x, area) tuples, sorted largest-first.
+        center_x is relative to the ROI crop; caller adds roi_left back
+        to convert to full-frame coordinates.
+        """
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
-            return None
-        largest = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(largest)
-        if area < MIN_CONTOUR_AREA:
-            return None
-        x, y, w, h = cv2.boundingRect(largest)
-        center_x = x + w // 2
-        return (color_label, center_x, area)
+            return []
+
+        scored = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < MIN_CONTOUR_AREA:
+                continue
+            x, y, w, h = cv2.boundingRect(c)
+            center_x = x + w // 2
+            scored.append((color_label, center_x, area))
+
+        scored.sort(key=lambda t: t[2], reverse=True)
+        return scored[:MAX_CANDIDATES_PER_COLOR]
 
 
 if __name__ == "__main__":
@@ -140,7 +243,8 @@ if __name__ == "__main__":
         while True:
             time.sleep(0.2)
             d = vision.get_detection()
-            print(f"color={d['color']} center_x={d['center_x']} area={d['area']} stale={vision.is_stale()}")
+            print(f"best: color={d['color']} center_x={d['center_x']} area={d['area']} "
+                  f"stale={vision.is_stale()} | all candidates: {d['candidates']}")
     except KeyboardInterrupt:
         pass
     finally:
