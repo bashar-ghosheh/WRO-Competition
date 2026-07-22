@@ -31,8 +31,8 @@ WIDTH, HEIGHT = 600, 600
 CENTER_X, CENTER_Y = WIDTH // 2, HEIGHT // 2
 
 # Range and scaling
-MAX_RANGE_MM = 3000.0
-SCALE = 280.0 / MAX_RANGE_MM  # Scale 3 meters to fit inside a 280-pixel radius
+MAX_RANGE_MM = 1000.0
+SCALE = 280.0 / MAX_RANGE_MM  # Scale 1 meter to fit inside a 280-pixel radius
 
 class LidarStreamer:
     def __init__(self):
@@ -45,11 +45,11 @@ class LidarStreamer:
         # 1. Create a black canvas
         canvas = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
 
-        # 2. Draw grid circles (concentric circles at 1m, 2m, 3m)
-        for r_meters in [1.0, 2.0, 3.0]:
+        # 2. Draw grid circles (concentric circles at 0.25m, 0.5m, 0.75m, 1m)
+        for r_meters in [0.25, 0.5, 0.75, 1.0]:
             r_pixels = int(r_meters * 1000 * SCALE)
             cv2.circle(canvas, (CENTER_X, CENTER_Y), r_pixels, (50, 50, 50), 1)
-            cv2.putText(canvas, f"{int(r_meters)}m", (CENTER_X + r_pixels + 5, CENTER_Y + 5),
+            cv2.putText(canvas, f"{r_meters}m", (CENTER_X + r_pixels + 5, CENTER_Y + 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (80, 80, 80), 1)
 
         # Draw crosshairs
