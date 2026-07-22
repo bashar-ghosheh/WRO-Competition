@@ -78,8 +78,8 @@ FRAME_H = 480
 # TUNE THESE for your camera's mounting height/angle. Defaults below are
 # a starting guess assuming the camera is angled down slightly and the
 # track fills the lower-middle portion of the frame.
-ROI_TOP = 300       # slice top bound
-ROI_BOTTOM = 400    # slice bottom bound
+ROI_TOP = 190       # slice top bound
+ROI_BOTTOM = 250    # slice bottom bound
 ROI_LEFT = 60       # columns left of this are ignored (outside track boundary)
 ROI_RIGHT = 580     # columns right of this are ignored (outside track boundary)
 
