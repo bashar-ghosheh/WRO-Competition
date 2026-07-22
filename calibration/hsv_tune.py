@@ -28,8 +28,8 @@ def main():
 
     # Configuration (Must match camera_vision.py)
     FLIP_MODE = -1
-    ROI_TOP = 220
-    ROI_BOTTOM = 250
+    ROI_TOP = 30
+    ROI_BOTTOM = 60
     ROI_LEFT = 60
     ROI_RIGHT = 580
 
