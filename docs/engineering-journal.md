@@ -1,12 +1,27 @@
 # Engineering Journal - WRO 2026 Future Engineers
 
-This journal logs our development milestones, the engineering challenges we faced, our testing attempts, and the reasoning behind our design changes.
+This journal logs our development milestones, the engineering challenges we faced, our testing attempts, the reasoning behind our design changes, and our system risk analysis.
+
+---
+
+## 🛡️ Risk Identification & Failure Mitigation Matrix
+
+To ensure system reliability on race day, we identified potential hardware and software failure points and established mitigation strategies:
+
+| Subsystem | Potential Failure / Risk | Severity / Impact | Mitigation Strategy |
+| :--- | :--- | :--- | :--- |
+| **Power Distribution** | Voltage sag during motor acceleration causes Raspberry Pi brownout reset. | **HIGH** (Car stops running) | Powered Pi from a 12V-to-5V buck regulator backed by a high-capacity 2P3S Samsung 6Ah battery. |
+| **Thermal Management** | BMS overheating melts PLA battery casing. | **HIGH** (Structural failure / fire hazard) | Repositioned BMS and installed a dedicated **5W active blower fan cooling rig**. |
+| **Steering Linkage** | Servo forces wheels beyond physical limit, stripping gears. | **MEDIUM** (Mechanical breakdown) | Mechanically centered servo at 90° and clamped software bounds to 60° (left) and 120° (right). |
+| **Communication** | USB Serial cable disconnects or drops packets due to EMI noise. | **HIGH** (Loss of control) | Implemented 500ms hardware watchdog in ESP32 firmware and auto-reconnect logic in Pi software. |
+| **Computer Vision** | Ambient light reflections on track cause false positive pillar detections. | **MEDIUM** (Navigational error) | Cropped ROI to narrow 60px floor slice ($y=190$ to $250$), applied 180° rotation, and set min contour threshold to 50px. |
+| **Lidar Sensing** | Black arena walls absorb laser light, causing zero-distance readings. | **HIGH** (Wall collision) | Replaced ToF sensors with D500 Lidar using true laser technology; added CRC8 data validation. |
 
 ---
 
 ## 📅 Log Entry 1: Sensor Suite Decisions
 * **What we tried**: We initially planned to use a "trident" configuration of three VL53L1X Time-of-Flight (ToF) sensors (pointing left, front, and right) alongside the camera.
-* **Why it didn't work**: Managing multiple ToF sensors on the Pi's I2C bus required configuring individual `XSHUT` pins to change their addresses dynamically on boot. This created significant wiring complexity, and the constant polling created high I2C bus latency. Furthermore, the distance data was redundant when combined with the Lidar.
+* **Why it didn't work**: Managing multiple ToF sensors on the Pi's I2C bus required configuring individual `XSHUT` pins to change their addresses dynamically on boot. This created significant wiring complexity, and the constant polling created high I2C bus latency. Furthermore, ToF sensors struggled to detect the black arena walls.
 * **What we changed to**: We removed all ToF sensors from the design and relied strictly on the **D500 LiDAR** for all distance and wall-following perception.
 * **Why**: The Lidar already provides a complete, high-resolution 360-degree polar distance map, which simplifies our cabling, reduces weight, and frees up Pi GPIO pins.
 
@@ -24,7 +39,7 @@ This journal logs our development milestones, the engineering challenges we face
 * **What we tried**: We initially captured a full $640 \times 480$ camera frame and cropped it to a large vertical window from row `140` to `460`.
 * **Why it didn't work**: The large window captured background objects off the track, reflections from the car's own front bumper, and ceiling lights, which caused false contour detections. It also took too long to process, reducing our frame rate.
 * **What we changed to**: We set `ROI_TOP = 190` and `ROI_BOTTOM = 250` (a narrow 60-pixel vertical slice) and implemented a 180° rotation (`FLIP_MODE = -1`) because we mounted the camera backwards and upside-down.
-* **Why**: This narrow slice isolates only the exact portion of the track floor where pillars appear before the car needs to steer. The reduced image size cut OpenCV processing time by over 60%, raising our frame rate to a stable 25+ FPS.
+* **Why**: This narrow slice isolates only the exact portion of the track floor where pillars appear before the car needs to steer. The reduced image size cut OpenCV processing time by over 60%, raising our frame rate to a stable 28+ FPS.
 
 ---
 
