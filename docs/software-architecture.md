@@ -11,6 +11,9 @@ We divide the software architecture into high-level perception (Pi) and low-leve
 1. **Raspberry Pi 4B (High-Level Controller)**: Handles color thresholding, Lidar packet processing, and path-planning state transitions. It computes the target steering angle ($60^\circ$ to $120^\circ$) and motor speed (PWM $-255$ to $255$).
 2. **ESP32-S3 Dev Board (Low-Level Driver)**: Receives the command string via USB Serial (`"S<angle>,<speed>\n"`), generates the physical PWM signals to drive the servo and H-Bridge, and runs a safety watchdog.
 
+![Control Flow & System Communication Diagram](file:///C:/Users/basha/OneDrive/Desktop/Studies/External/WRO%20Competition/wro2026/media/diagrams/control_flow.png)
+
+
 ---
 
 ## 📁 Python Software Modules (Raspberry Pi)

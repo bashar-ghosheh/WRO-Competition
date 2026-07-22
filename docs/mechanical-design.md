@@ -11,6 +11,9 @@ Instead of using a pre-built commercial chassis, we designed and manufactured ou
 ### Vehicle Dimensions & Prototyping Constraints:
 - **Footprint**: **$24 \times 12\text{ cm}$**. This footprint was selected to accommodate the Raspberry Pi 4B, ESP32-S3, and sensors while maintaining high agility and clean movement ranges on the track.
 - **Manufacturing Constraints (3D Printer)**: The chassis was printed on a **Kodama Trinus 3D printer** using **PLA (Polylactic Acid)**. Because the printer's bed size is quite small (**$12 \times 12\text{ cm}$**), we designed the main chassis to be printed in **two halves** that are securely bolted together. This modular design enabled high-accuracy prints without requiring a large-format industrial printer.
+
+![Kodama Trinus 3D Printer](file:///C:/Users/basha/OneDrive/Desktop/Studies/External/WRO%20Competition/wro2026/media/robot-photos/kodama_trinus.jpeg)
+
 - **Center of Gravity**: Heavy components (such as the 2P3S Samsung battery pack, the heavy 37mm DC drive motor, and the dual metal buck converters) are mounted as low as possible on the lower tier. This prevents the vehicle from tipping or rolling during high-speed, sharp evasive maneuvers around obstacles.
 
 ---
@@ -18,6 +21,8 @@ Instead of using a pre-built commercial chassis, we designed and manufactured ou
 ## 🔧 Steering Mechanism: Ackermann Geometry
 
 Our steering utilizes a highly reliable **Ackermann steering mechanism** to control the front wheels. 
+
+![Ackermann Steering CAD Render](file:///C:/Users/basha/OneDrive/Desktop/Studies/External/WRO%20Competition/wro2026/cad/renders/ackermann_cad.png)
 
 ```
    [Inside Wheel: turns sharper]             [Outside Wheel: turns wider]
@@ -56,4 +61,8 @@ The drivetrain relies on a rear-wheel-drive system driven by a powerful motor an
 When the car turns, the outer wheel must travel a longer path than the inner wheel. If both wheels spun at the same speed (solid axle), the wheels would skid, causing severe understeer and tire wear.
 - **Custom Build**: We designed and manufactured a custom differential gearbox housing using **nylon plastic gears taken from toys** mounted on high-speed ball bearings.
 - **Function**: This differential system successfully prevents rear-wheel skidding, allowing the car to make smooth, clean cornering maneuvers at high speed.
+
+![Differential Gear Housing CAD](file:///C:/Users/basha/OneDrive/Desktop/Studies/External/WRO%20Competition/wro2026/cad/renders/differential_cad.jpeg)
+![Full Drivetrain Assembly with Belt Tensioner](file:///C:/Users/basha/OneDrive/Desktop/Studies/External/WRO%20Competition/wro2026/media/robot-photos/drivetrain_physical.jpeg)
+
 
