@@ -28,8 +28,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 FRAME_W = 640
 FRAME_H = 480
 
-ROI_TOP = 30
-ROI_BOTTOM = 60
+ROI_TOP = 400
+ROI_BOTTOM = 430
 ROI_LEFT = 60
 ROI_RIGHT = 580
 
