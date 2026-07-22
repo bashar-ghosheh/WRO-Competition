@@ -26,6 +26,13 @@ def main():
     cv2.createTrackbar("V Min", window_name, 70, 255, nothing)
     cv2.createTrackbar("V Max", window_name, 255, 255, nothing)
 
+    # Configuration (Must match camera_vision.py)
+    FLIP_MODE = -1
+    ROI_TOP = 220
+    ROI_BOTTOM = 250
+    ROI_LEFT = 60
+    ROI_RIGHT = 580
+
     # Try initializing camera (Raspberry Pi Camera or standard USB webcam)
     try:
         from picamera2 import Picamera2
@@ -51,7 +58,19 @@ def main():
                     print("[ERROR] Failed to read frame from camera.")
                     break
 
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            # Apply flip if configured
+            if FLIP_MODE is not None:
+                frame = cv2.flip(frame, FLIP_MODE)
+
+            # Draw green crop box on raw frame for visual reference
+            overlay_frame = frame.copy()
+            cv2.rectangle(overlay_frame, (ROI_LEFT, ROI_TOP), (ROI_RIGHT, ROI_BOTTOM), (0, 255, 0), 2)
+
+            # Crop frame to ROI slice
+            roi = frame[ROI_TOP:ROI_BOTTOM, ROI_LEFT:ROI_RIGHT]
+
+            # Convert crop to HSV
+            hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
             # Get trackbar positions
             h_min = cv2.getTrackbarPos("H Min", window_name)
@@ -65,10 +84,15 @@ def main():
             upper = np.array([h_max, s_max, v_max])
 
             mask = cv2.inRange(hsv, lower, upper)
-            result = cv2.bitwise_and(frame, frame, mask=mask)
+            result = cv2.bitwise_and(roi, roi, mask=mask)
 
-            # Combine original and masked output side by side
-            stacked = np.hstack((frame, result))
+            # Scale up cropped mask view vertically for better visibility
+            h, w, _ = result.shape
+            scale = 480 / h
+            cropped_resized = cv2.resize(result, (int(w * scale), 480))
+
+            # Combine original frame (with ROI overlay) and the resized cropped mask view
+            stacked = np.hstack((overlay_frame, cropped_resized))
             cv2.imshow(window_name, stacked)
 
             key = cv2.waitKey(1) & 0xFF

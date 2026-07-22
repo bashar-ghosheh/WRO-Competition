@@ -28,10 +28,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 FRAME_W = 640
 FRAME_H = 480
 
-ROI_TOP = 140
-ROI_BOTTOM = 460
+ROI_TOP = 220
+ROI_BOTTOM = 250
 ROI_LEFT = 60
 ROI_RIGHT = 580
+
+FLIP_MODE = -1  # -1 = 180 degree rotation, 0 = vertical flip, 1 = horizontal flip, None = no flip
 
 # Class to capture frames from Picamera2 in a background thread
 class CameraStreamer:
@@ -48,6 +50,8 @@ class CameraStreamer:
     def get_jpeg_frame(self):
         # Capture raw frame (in BGR memory layout)
         frame = self.picam2.capture_array()
+        if FLIP_MODE is not None:
+            frame = cv2.flip(frame, FLIP_MODE)
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         # 1. Create a copy and draw the green ROI crop box

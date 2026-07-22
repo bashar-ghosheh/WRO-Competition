@@ -78,8 +78,8 @@ FRAME_H = 480
 # TUNE THESE for your camera's mounting height/angle. Defaults below are
 # a starting guess assuming the camera is angled down slightly and the
 # track fills the lower-middle portion of the frame.
-ROI_TOP = 140       # rows above this are ignored (background/ceiling above track)
-ROI_BOTTOM = 460    # rows below this are ignored (car's own bumper/chassis, if visible)
+ROI_TOP = 220       # 30px slice top bound
+ROI_BOTTOM = 250    # 30px slice bottom bound
 ROI_LEFT = 60       # columns left of this are ignored (outside track boundary)
 ROI_RIGHT = 580     # columns right of this are ignored (outside track boundary)
 
@@ -91,16 +91,19 @@ RED_RANGES = [
 ]
 GREEN_RANGE = ((40, 70, 70), (85, 255, 255))
 
-MIN_CONTOUR_AREA = 400  # pixels; filters out noise/tiny specks
+MIN_CONTOUR_AREA = 50  # Lowered from 400 since the vertical slice is now only 30px high
 MAX_CANDIDATES_PER_COLOR = 3  # cap how many blobs per color we report
+FLIP_MODE = -1  # -1 = 180 degree rotation, 0 = vertical flip, 1 = horizontal flip, None = no flip
 
 
 class CameraVision:
     def __init__(self, frame_w=FRAME_W, frame_h=FRAME_H,
                  roi_top=ROI_TOP, roi_bottom=ROI_BOTTOM,
-                 roi_left=ROI_LEFT, roi_right=ROI_RIGHT):
+                 roi_left=ROI_LEFT, roi_right=ROI_RIGHT,
+                 flip_mode=FLIP_MODE):
         self.frame_w = frame_w
         self.frame_h = frame_h
+        self.flip_mode = flip_mode
 
         # Clamp ROI to valid frame bounds so a bad tune value can't crash cv2.
         self.roi_top = max(0, min(roi_top, frame_h - 1))
@@ -149,8 +152,10 @@ class CameraVision:
     def _run(self):
         while self._running:
             frame = self._picam2.capture_array()  # RGB888, full frame
+            if self.flip_mode is not None:
+                frame = cv2.flip(frame, self.flip_mode)
 
-            # Crop to ROI first: cheaper processing + ignores anything
+            # Crop to ROI: cheaper processing + ignores anything
             # outside the field of play (background, chassis, off-track).
             roi = frame[self.roi_top:self.roi_bottom, self.roi_left:self.roi_right]
 
