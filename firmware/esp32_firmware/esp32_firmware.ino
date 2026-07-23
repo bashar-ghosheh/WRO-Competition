@@ -7,10 +7,12 @@
   
   Hardware:
     - Steering Servo: Connected to SERVO_PIN (GPIO 18)
-    - Motor Driver (DRV8833 Channel A):
+    - Motor Driver (DRV8833 / A4950 Channel A):
         AIN1 -> GPIO 4
         AIN2 -> GPIO 5
-        nSLEEP -> Tied to 3.3V (or GPIO 6)
+    - UART Interface to Pi:
+        RX_PIN -> GPIO 16 (Change to your exact pin later)
+        TX_PIN -> GPIO 17 (Change to your exact pin later)
         
   Required Arduino Libraries:
     - ESP32Servo (Install via Arduino Library Manager)
@@ -20,8 +22,14 @@
 
 // --- PIN CONFIGURATION ---
 #define SERVO_PIN      18  // Servo PWM control pin
-#define MOTOR_AIN1_PIN 4   // DRV8833 Channel A Input 1
-#define MOTOR_AIN2_PIN 5   // DRV8833 Channel A Input 2
+#define MOTOR_AIN1_PIN 4   // Motor Input 1
+#define MOTOR_AIN2_PIN 5   // Motor Input 2
+
+// --- GPIO UART CONFIGURATION ---
+#define USE_GPIO_UART  true
+#define UART_RX_PIN    16  // Default RX Pin (Update later with exact pin)
+#define UART_TX_PIN    17  // Default TX Pin (Update later with exact pin)
+#define UART_BAUD      115200
 
 // --- SAFETY WATCHDOG ---
 #define WATCHDOG_TIMEOUT_MS 500  // Stop motor if Pi loses connection for > 500ms
@@ -35,15 +43,20 @@ int currentSpeed = 0;  // Default stopped
 
 void setup() {
   // 1. Initialize USB Serial (ESP32-S3 Native USB-CDC)
-  Serial.begin(115200);
+  Serial.begin(UART_BAUD);
 
-  // 2. Attach Servo
+  // 2. Initialize GPIO Hardware UART (Serial1)
+#if USE_GPIO_UART
+  Serial1.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
+#endif
+
+  // 3. Attach Servo
   ESP32PWM::allocateTimer(0);
   steeringServo.setPeriodHertz(50);            // Standard 50Hz servo frequency
   steeringServo.attach(SERVO_PIN, 500, 2500);  // 0.5ms - 2.5ms pulse width bounds
   steeringServo.write(currentAngle);
 
-  // 3. Initialize Motor Pins
+  // 4. Initialize Motor Pins
   pinMode(MOTOR_AIN1_PIN, OUTPUT);
   pinMode(MOTOR_AIN2_PIN, OUTPUT);
   stopMotor();
@@ -52,37 +65,47 @@ void setup() {
 }
 
 void loop() {
-  // 1. Read & parse incoming USB Serial commands
+  // 1. Check for commands over GPIO Hardware UART (Serial1)
+#if USE_GPIO_UART
+  if (Serial1.available() > 0) {
+    String line = Serial1.readStringUntil('\n');
+    parseCommand(line);
+  }
+#endif
+
+  // 2. Check for commands over USB Serial (Backup / Debugging)
   if (Serial.available() > 0) {
     String line = Serial.readStringUntil('\n');
-    line.trim();
-
-    if (line.startsWith("S")) {
-      // Parse format: S<angle>,<speed>
-      int commaIndex = line.indexOf(',');
-      if (commaIndex > 1) {
-        String angleStr = line.substring(1, commaIndex);
-        String speedStr = line.substring(commaIndex + 1);
-
-        int targetAngle = angleStr.toInt();
-        int targetSpeed = speedStr.toInt();
-
-        // Clamp values safely
-        targetAngle = constrain(targetAngle, 0, 180);
-        targetSpeed = constrain(targetSpeed, -255, 255);
-
-        // Drive Actuators
-        setSteering(targetAngle);
-        setMotorSpeed(targetSpeed);
-
-        lastPacketTime = millis(); // Reset safety watchdog
-      }
-    }
+    parseCommand(line);
   }
 
-  // 2. Safety Watchdog Trigger
+  // 3. Safety Watchdog Trigger
   if (millis() - lastPacketTime > WATCHDOG_TIMEOUT_MS) {
     stopMotor();
+  }
+}
+
+void parseCommand(String line) {
+  line.trim();
+  if (line.startsWith("S")) {
+    int commaIndex = line.indexOf(',');
+    if (commaIndex > 1) {
+      String angleStr = line.substring(1, commaIndex);
+      String speedStr = line.substring(commaIndex + 1);
+
+      int targetAngle = angleStr.toInt();
+      int targetSpeed = speedStr.toInt();
+
+      // Clamp values safely
+      targetAngle = constrain(targetAngle, 0, 180);
+      targetSpeed = constrain(targetSpeed, -255, 255);
+
+      // Drive Actuators
+      setSteering(targetAngle);
+      setMotorSpeed(targetSpeed);
+
+      lastPacketTime = millis(); // Reset safety watchdog
+    }
   }
 }
 

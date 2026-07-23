@@ -27,7 +27,8 @@ def main():
     logging.info("==========================================")
 
     # 1. Initialize sensor and communication instances
-    # Adjust ports if using USB-to-Serial adapters for Lidar
+    # Port note: Lidar uses /dev/serial0 (GPIO 14/15).
+    # ESP32 SerialLink can use /dev/ttyUSB0 (USB) or /dev/ttyAMA1 (secondary GPIO UART)
     vision = CameraVision(frame_w=640, frame_h=480)
     lidar = LidarReader(port="/dev/serial0", baud=230400) 
     serial_link = SerialLink(port="/dev/ttyUSB0", baud=115200, auto_detect=True)

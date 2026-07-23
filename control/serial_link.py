@@ -117,8 +117,8 @@ class SerialLink:
 
     def _find_port(self):
         """Best-effort auto-detect: prefer the configured port if present,
-        otherwise scan common USB-serial device node patterns."""
-        candidates = [self.port] + sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+        otherwise scan common USB and GPIO UART device node patterns."""
+        candidates = [self.port] + sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyAMA*"))
         for c in candidates:
             if c and glob.glob(c):
                 return c
