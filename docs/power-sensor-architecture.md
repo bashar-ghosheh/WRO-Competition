@@ -54,14 +54,24 @@ To ensure that the power supply can sustain operating current without unexpected
 
 ## 🔌 Actuator & Sensor Interfaces
 
-### 1. Pin Connections & Protocols
-| Source Device | Target Device | Protocol | Details |
+### 1. Raspberry Pi 4B Pinouts
+| Device / Sensor | Connection Protocol | Physical Port / Pin | Details |
 | :--- | :--- | :--- | :--- |
-| **Raspberry Pi 4B** | **ESP32-S3** | UART (USB Serial) | High-level coordinate stream (115200 baud) |
-| **Raspberry Pi 4B** | **D500 Lidar** | UART | Raw polar distance sweeps (230400 baud) |
-| **Raspberry Pi 4B** | **Pi Camera Rev 1.3** | CSI Ribbon | High-speed video stream |
-| **ESP32-S3** | **A4950 Motor Driver**| PWM + Direction | Controls the 37mm DC Motor speed and rotation |
-| **ESP32-S3** | **MG996R Servo** | PWM | Steers the wheels (GPIO 18) |
+| **D500 Lidar (Data)** | UART | `/dev/serial0` (GPIO 14/15) | 230400 Baud |
+| **D500 Lidar (PWM)** | Hardware PWM | **GPIO 12 (PWM0)** | 1kHz PWM motor speed control |
+| **ESP32-S3 Board** | GPIO UART / USB | `/dev/ttyAMA1` or `/dev/ttyUSB0` | 115200 Baud command link |
+| **Pi Camera Rev 1.3** | CSI Ribbon | Camera CSI Port | Native libcamera interface |
+
+### 2. ESP32-S3 Pinouts
+| Device / Actuator | Connection Protocol | ESP32 GPIO Pin | Details |
+| :--- | :--- | :--- | :--- |
+| **Motor Driver AIN1** | PWM Output | **GPIO 16** | Direction / Speed Input 1 |
+| **Motor Driver AIN2** | PWM Output | **GPIO 17** | Direction / Speed Input 2 |
+| **Motor Encoder C1** | Interrupt Input | **GPIO 32** | Encoder Phase 1 Signal |
+| **Motor Encoder C2** | GPIO Input | **GPIO 33** | Encoder Phase 2 Signal |
+| **MG996R Servo (Signal)** | PWM (50Hz) | **GPIO 18** | Controlled via ESP32Servo library |
+| **Pi UART Connection** | Hardware Serial1 | **GPIO 4 (RX)** / **GPIO 5 (TX)** | Connects to Raspberry Pi TX/RX |
+
 
 ### 2. A4950 Motor Driver Choice
 - **Reasoning**: We chose the **A4950 motor driver** to run the 37mm gearmotor. It supports the higher current requirements of our motor under load (up to 2.5A stall) and is compatible with the ESP32's PWM speed control.

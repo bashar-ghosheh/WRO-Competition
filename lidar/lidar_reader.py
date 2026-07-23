@@ -3,7 +3,7 @@ lidar_reader.py
 
 Reads the D500 (LDROBOT LD19 / STL-19P core) lidar over UART and maintains
 a shared, thread-safe angle -> distance(mm) map that other threads
-(vision, state machine) can read at any time.
+(vision, state machine) can read at any time. Handles optional PWM motor pin (GPIO 12).
 
 Packet format (LD19 standard, 47 bytes per packet):
   byte 0      : header, always 0x54
@@ -15,18 +15,6 @@ Packet format (LD19 standard, 47 bytes per packet):
   bytes 42-43 : end_angle, uint16 LE, units of 0.01 degree
   bytes 44-45 : timestamp, uint16 LE, ms
   byte 46     : crc8 checksum over bytes 0-45
-
-Angles for each of the 12 points are linearly interpolated between
-start_angle and end_angle.
-
-Usage:
-    reader = LidarReader('/dev/serial0', 230400)
-    reader.start()
-    ...
-    dist = reader.get_distance(90)   # distance in mm at ~90 degrees, or None
-    snapshot = reader.get_snapshot() # dict {angle_deg: distance_mm} full copy
-    ...
-    reader.stop()
 """
 
 import threading
@@ -72,21 +60,34 @@ def crc8(data: bytes) -> int:
 
 
 class LidarReader:
-    def __init__(self, port="/dev/serial0", baud=230400, max_range_mm=8000):
+    def __init__(self, port="/dev/serial0", baud=230400, max_range_mm=8000, pwm_pin=12):
         self.port = port
         self.baud = baud
         self.max_range_mm = max_range_mm
+        self.pwm_pin = pwm_pin
+        self._pwm_obj = None
 
         self._ser = None
         self._thread = None
         self._running = False
 
         self._lock = threading.Lock()
-        # angle_deg (int, 0-359) -> distance_mm (int). Populated as scans arrive.
         self._distances = {}
         self._last_update = 0.0
 
     def start(self):
+        # 1. Initialize PWM pin for Lidar motor spinning if specified
+        if self.pwm_pin is not None:
+            try:
+                import RPi.GPIO as GPIO
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(self.pwm_pin, GPIO.OUT)
+                self._pwm_obj = GPIO.PWM(self.pwm_pin, 1000)  # 1kHz PWM frequency
+                self._pwm_obj.start(100)                      # 100% duty cycle full speed
+            except Exception as e:
+                print(f"[WARN] Lidar PWM pin setup skipped: {e}")
+
+        # 2. Open Serial connection
         self._ser = serial.Serial(self.port, self.baud, timeout=0.1)
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -98,6 +99,13 @@ class LidarReader:
             self._thread.join(timeout=1.0)
         if self._ser:
             self._ser.close()
+        if self._pwm_obj:
+            try:
+                self._pwm_obj.stop()
+                import RPi.GPIO as GPIO
+                GPIO.cleanup(self.pwm_pin)
+            except Exception:
+                pass
 
     def get_distance(self, angle_deg):
         """Return distance in mm at the given integer angle (0-359), or None if no data yet."""
@@ -124,7 +132,6 @@ class LidarReader:
             buf.extend(chunk)
 
             while True:
-                # find header byte
                 idx = buf.find(HEADER)
                 if idx == -1:
                     buf.clear()
@@ -132,22 +139,19 @@ class LidarReader:
                 if idx > 0:
                     del buf[:idx]
                 if len(buf) < PACKET_LEN:
-                    break  # wait for more bytes
+                    break
 
                 packet = bytes(buf[:PACKET_LEN])
                 if crc8(packet[:-1]) == packet[-1]:
                     self._parse_packet(packet)
                     del buf[:PACKET_LEN]
                 else:
-                    # bad checksum, drop just the header byte and resync
                     del buf[:1]
 
     def _parse_packet(self, packet: bytes):
-        speed = int.from_bytes(packet[2:4], "little")  # noqa: F841 (unused for now)
-        start_angle = int.from_bytes(packet[4:6], "little") / 100.0  # degrees
-        end_angle = int.from_bytes(packet[42:44], "little") / 100.0  # degrees
+        start_angle = int.from_bytes(packet[4:6], "little") / 100.0
+        end_angle = int.from_bytes(packet[42:44], "little") / 100.0
 
-        # handle wraparound (e.g. start=350deg, end=5deg)
         angle_span = end_angle - start_angle
         if angle_span < 0:
             angle_span += 360.0
@@ -158,10 +162,9 @@ class LidarReader:
             for i in range(POINTS_PER_PACKET):
                 offset = 6 + i * 3
                 dist_mm = int.from_bytes(packet[offset:offset + 2], "little")
-                # intensity = packet[offset + 2]  # available if you want it later
 
                 if dist_mm == 0 or dist_mm > self.max_range_mm:
-                    continue  # invalid / out-of-range reading
+                    continue
 
                 angle = (start_angle + step * i) % 360.0
                 self._distances[int(angle)] = dist_mm
@@ -170,8 +173,7 @@ class LidarReader:
 
 
 if __name__ == "__main__":
-    # Quick standalone test: print front/left/right distances at 5Hz
-    reader = LidarReader("/dev/serial0", 230400)
+    reader = LidarReader("/dev/serial0", 230400, pwm_pin=12)
     reader.start()
     try:
         while True:
