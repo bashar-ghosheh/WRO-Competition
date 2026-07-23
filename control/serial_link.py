@@ -55,7 +55,7 @@ import serial
 
 
 class SerialLink:
-    def __init__(self, port="/dev/ttyUSB0", baud=115200, send_hz=30, log_path=None,
+    def __init__(self, port="/dev/ttyAMA1", baud=115200, send_hz=30, log_path=None,
                  auto_detect=True):
         self.port = port
         self.baud = baud

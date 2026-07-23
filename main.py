@@ -27,11 +27,11 @@ def main():
     logging.info("==========================================")
 
     # 1. Initialize sensor and communication instances
-    # Port note: Lidar uses /dev/serial0 (GPIO 14/15).
-    # ESP32 SerialLink can use /dev/ttyUSB0 (USB) or /dev/ttyAMA1 (secondary GPIO UART)
+    # D500 Lidar: Reads data on /dev/serial0 (Pi Pin 10 / GPIO 15), Motor PWM on Pin 32 (GPIO 12)
+    # ESP32 SerialLink: UART4 on /dev/ttyAMA1 (Pi Pin 24 TX / Pin 21 RX)
     vision = CameraVision(frame_w=640, frame_h=480)
-    lidar = LidarReader(port="/dev/serial0", baud=230400) 
-    serial_link = SerialLink(port="/dev/ttyUSB0", baud=115200, auto_detect=True)
+    lidar = LidarReader(port="/dev/serial0", baud=230400, pwm_pin=12) 
+    serial_link = SerialLink(port="/dev/ttyAMA1", baud=115200, auto_detect=True)
     
     # 2. Instantiate state machine controller
     sm = StateMachine(vision=vision, lidar=lidar, serial_link=serial_link, loop_hz=20)
