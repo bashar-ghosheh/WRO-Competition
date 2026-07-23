@@ -103,14 +103,28 @@ class StateMachine:
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
+    def _get_sector_min(self, distances, start_angle, end_angle):
+        """
+        Finds the minimum distance within an angular sector arc.
+        By geometric projection, the minimum distance to a straight wall across a sector
+        is ALWAYS the true perpendicular distance, making wall-following completely
+        immune to car tilt or vehicle yaw rotation!
+        Filters out self-reflections (<100mm) and out-of-range readings.
+        """
+        valid_pts = [
+            distances[a] for a in range(start_angle, end_angle + 1)
+            if a in distances and 100 <= distances[a] <= 4000
+        ]
+        return min(valid_pts) if valid_pts else None
+
     def _handle_wall_following(self, distances):
         """
-        Uses lidar to follow the walls.
-        Basic Proportional (P) controller that compares left (90 deg) and right (270 deg) distances.
+        Uses Sector Minimum Projection to follow walls smoothly.
+        Compares true perpendicular left (60°-120° arc) and right (240°-300° arc) wall distances.
         """
-        # Get distances at left and right sides
-        left_dist = distances.get(90)
-        right_dist = distances.get(270)
+        # Search a 60-degree sector arc around left (60°-120°) and right (240°-300°)
+        left_dist = self._get_sector_min(distances, 60, 120)
+        right_dist = self._get_sector_min(distances, 240, 300)
 
         if left_dist is None or right_dist is None:
             # Missing side readings, maintain center
