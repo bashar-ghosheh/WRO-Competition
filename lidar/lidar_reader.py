@@ -80,7 +80,11 @@ class LidarReader:
         if self.pwm_pin is not None:
             try:
                 import RPi.GPIO as GPIO
-                GPIO.setmode(GPIO.BCM)
+                GPIO.setwarnings(False)
+                try:
+                    GPIO.setmode(GPIO.BCM)
+                except Exception:
+                    pass
                 GPIO.setup(self.pwm_pin, GPIO.OUT)
                 self._pwm_obj = GPIO.PWM(self.pwm_pin, 1000)  # 1kHz PWM frequency
                 self._pwm_obj.start(100)                      # 100% duty cycle full speed
